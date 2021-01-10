@@ -24,7 +24,10 @@ class Constants(BaseConstants):
     num_rounds = 1
 
     treatment_names = ['A', 'B', 'C']  # define treatment names here, can be more than 2
-    weighted_assignment_threshold = 4  # wait until this threshold before starting weighted assignment of treatments
+
+    # Wait until this many participants have completed the experiment.
+    # Only after this threshold we start the weighted assignment of treatments
+    weighted_assignment_threshold = 4
 
 
 class Subsession(BaseSubsession):
