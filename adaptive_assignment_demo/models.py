@@ -82,17 +82,17 @@ class Player(BasePlayer):
             k=1
         )[0]
 
-        # Note: There is a weakness to this method. Lets assume there are 3 treatments.
+        # Note: There is a weakness to this method. Let's assume there are 3 treatments.
         # Initially, all treatments are equally likely to be assigned.
         # As soon as the first player completes the experiment, the weighting starts.
-        # Lets assume the first player to finish is in treatment A.
+        # Let's assume the first player to finish is in treatment A.
         # Thus, the weights shift such that A, B, C are now assigned with probabilities [0, 0.5, 0.5].
         # These stay the same until the next player completes the experiment.
         # The problem is, that it takes time for players to reach the end of the experiment.
         # During the time it takes the next person to finish, we only assign treatments B and C in this example.
         # Then, suddenly, a wave of those B and C players arrive at the end of the experiment.
-        #
         # Now, A will look under-sampled and the weights shift accordingly.
+        #
         # There are multiple ways to solve the issue:
         # A naive way is implemented here. We only start weighted assignment once a threshold is reached.
         #
