@@ -57,6 +57,7 @@ class Player(BasePlayer):
         # until enough players completed the experiment, we randomize
         num_completed = sum(completed.values())
         if num_completed <= Constants.weighted_assignment_threshold:
+            print('Threshold not reached, implementing equal weights.')
             self.treatment = random.choice(Constants.treatment_names)
             return  # make sure to end execution of the function here
 
