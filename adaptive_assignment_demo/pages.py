@@ -8,7 +8,7 @@ class GamePage1(Page):
         # this function is reliably called when the page is loaded
         # we use it to make sure the treatment is set when the participant arrives on the first page
 
-        if not self.player.treatment_name:
+        if not self.player.treatment:
             self.player.set_treatment()
 
         # return any variables for the template as usual. I leave it empty for now.

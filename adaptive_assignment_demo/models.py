@@ -24,16 +24,8 @@ class Constants(BaseConstants):
     num_rounds = 1
 
     treatment_names = ['A', 'B', 'C']  # define treatment names here, can be more than 2
+    weighted_assignment_threshold = 4  # weight until this threshold before starting weighted assignment of treatments
 
-    # adaptation strength
-    # values smaller 1 decrease the weight given to the treatment with the fewest players
-    # values larger 1 increase the weight given to the treatment with the fewest players
-    # A value of 2 seems to work quite well
-    # 
-    # I suggest to run "otree test adaptive_assignment_demo 100" a couple of times with different values and
-    # check the output. It prints player counts, adjusted player counts, and resulting weights for each new player.
-
-    adaptation_strength = 2
 
 class Subsession(BaseSubsession):
     pass
@@ -44,53 +36,68 @@ class Group(BaseGroup):
 
 
 class Player(BasePlayer):
-    treatment_name = models.StringField()
-    completed_experiment = models.BooleanField(initial=False)
+    treatment = models.StringField()
+
+    def completed_experiment(self):
+        return self.participant._index_in_pages >= self.participant._max_page_index 
 
     def set_treatment(self):
-        # we need two dictionaries to track how many participants are playing and how many have completed each treatment
-        # both are initialized to zero
-        treatment_counts = dict()
-        for treatment_name in Constants.treatment_names:
-            treatment_counts[treatment_name] = 0
-
-        # count the number of participants per treatment that have a treatment assigned and are playing / have completed
+        # fill a dictionary with the players by treatment
+        treatment_players = {treatment_name: [] for treatment_name in Constants.treatment_names}
         for player in self.subsession.get_players():
-            if player.treatment_name:
-                treatment_counts[player.treatment_name] += 1
+            if player.treatment:
+                treatment_players[player.treatment].append(player)
 
-        # we now find the numbers of players missing in each treatment for a uniform distribution
-        max_players = max(treatment_counts.values())
+        # count playing and completed players by treatment
+        playing, completed = dict(), dict()
+        for name in Constants.treatment_names:
+            completed[name] = len([player for player in treatment_players[name] if player.completed_experiment()])
+            playing[name] = len([player for player in treatment_players[name] if not player.completed_experiment()])
 
-        # for the first player to start the experiment, max_players is zero. Thus we simply randomize treatments
-        if max_players == 0:
-            self.treatment_name = random.choice(Constants.treatment_names)
-            return  # and we return so the rest of the function is not executed
+        # until enough players completed the experiment, we randomize
+        num_completed = sum(completed.values())
+        if num_completed <= Constants.weighted_assignment_threshold:
+            self.treatment = random.choice(Constants.treatment_names)
+            return  # make sure to end execution of the function here
 
-        # now we want to calculate weights for randomized treatment assignment
-        # to gain control over how strongly the assignment reacts to the treatment with the lowest number of players
-        # we artificially reduce the number of players in this treatment even further. The strength is controlled
-        # by the constant "adaptation_strength"
+        # Now that more than the threshold has completed the experiment, it is time to adjust the weighting
+        # Idea: Calculate the inverse distribution of the completed and use it as a weighting function
+        # for the random treatment assignment.
+        inverse_completed = dict()
+        delta = 0.0001  # typically used to avoid division by zero
+        for name in Constants.treatment_names:
+            inverse_completed[name] = 1 / (completed[name] + delta)
 
-        # find the treatment with the fewest participants
-        treatment_with_fewest_participants = min(treatment_counts, key=treatment_counts.get)
+        # normalize
+        normalization_sum = sum(inverse_completed.values())
+        for name in Constants.treatment_names:
+            inverse_completed[name] /= normalization_sum
 
-        # artificially adjust the number even further down
-        adjusted_treatment_counts = treatment_counts.copy()
-        adjusted_treatment_counts[treatment_with_fewest_participants] *= 1 / Constants.adaptation_strength
-
-        # now we calculate treatment randomization weights based on the adjusted treatment counts
-        num_players = sum(treatment_counts.values())
-        treatment_weights = dict()
-        for treatment_name in Constants.treatment_names:
-            treatment_weights[treatment_name] = 1 - (adjusted_treatment_counts[treatment_name] / num_players)
-
-        # only print debug output when participant is a bot / test case
-        if self.participant._is_bot:
-            print('player counts:', treatment_counts, 'adjusted counts:', adjusted_treatment_counts, 'weights:', treatment_weights)
-
-        self.treatment_name = random.choices(
-            population=list(treatment_weights.keys()),
-            weights=list(treatment_weights.values()),
+        # assign treatments based on the inverse of the distribution of players who have completed the experiment
+        print('currently completed:', completed, 'resulting weights:', inverse_completed)
+        self.treatment = random.choices(
+            population=list(inverse_completed.keys()),
+            weights=list(inverse_completed.values()),
             k=1
         )[0]
+
+        # Note: There is a weakness to this method. Lets assume there are 3 treatments.
+        # Initially, all treatments are equally likely to be assigned.
+        # As soon as the first player completes the experiment, the weighting starts.
+        # Lets assume the first player to finish is in treatment A.
+        # Thus, the weights shift such that A, B, C are now assigned with probabilities [0, 0.5, 0.5].
+        # These stay the same until the next player completes the experiment.
+        # The problem is, that it takes time for players to reach the end of the experiment.
+        # During the time it takes the next person to finish, we only assign treatments B and C in this example.
+        # Then, suddenly, a wave of those B and C players arrive at the end of the experiment.
+        #
+        # Now, A will look under-sampled and the weights shift accordingly.
+        # There are multiple ways to solve the issue:
+        # A naive way is implemented here. We only start weighted assignment once a threshold is reached.
+        #
+        # A better way would be to also take the distribution of treatments among those players into account,
+        # that are currently playing, but have not yet completed the experiment.
+        # The problem then is, that you would have to track whether they are still "active" or
+        # whether they have dropped out (could set a dropped-out flag if they ever miss a timeout).
+        # It will also be difficult to "tune" the method to strike a good balance between achieving the goal
+        # of an equal number of participants in each treatment (completed) and the aggressiveness of the weighting.
