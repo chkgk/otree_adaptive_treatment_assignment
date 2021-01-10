@@ -24,7 +24,7 @@ class Constants(BaseConstants):
     num_rounds = 1
 
     treatment_names = ['A', 'B', 'C']  # define treatment names here, can be more than 2
-    weighted_assignment_threshold = 4  # weight until this threshold before starting weighted assignment of treatments
+    weighted_assignment_threshold = 4  # wait until this threshold before starting weighted assignment of treatments
 
 
 class Subsession(BaseSubsession):
@@ -49,10 +49,9 @@ class Player(BasePlayer):
                 treatment_players[player.treatment].append(player)
 
         # count playing and completed players by treatment
-        playing, completed = dict(), dict()
+        completed = dict()
         for name in Constants.treatment_names:
             completed[name] = len([player for player in treatment_players[name] if player.completed_experiment()])
-            playing[name] = len([player for player in treatment_players[name] if not player.completed_experiment()])
 
         # until enough players completed the experiment, we randomize
         num_completed = sum(completed.values())
